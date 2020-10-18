@@ -14,8 +14,7 @@ namespace QuantConnect.Algorithm.CSharp
     {
         // the changes from the previous universe selection
         private readonly Dictionary<DateTime, List<string>> _backtestSymbolsPerDay = new Dictionary<DateTime, List<string>>();
-        private const string LiveUrl = @"https://www.dropbox.com/sh/giil7qdwu1lim41/AACSGsg-U3M2KbO9nTI1nE0fa/stock-picker-live.csv?dl=1";
-        private const string BacktestUrl = @"https://www.dropbox.com/s/rc7xay8voo7elol/stock-picker-backtest-2020-10-16.csv?dl=1";
+        private const string fileUrl = @"https://www.dropbox.com/s/rc7xay8voo7elol/stock-picker-backtest-2020-10-16.csv?dl=1";
         private Dictionary<string, SecurityDetail> _securityDetails;
         private decimal _stopLossPercent = 0.97m;  //2% trailing loss
         private decimal _maxProfit = 1.02m;  //2% Profit
@@ -37,7 +36,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetUniverseSelection(
                 new ScheduledUniverseSelectionModel(
                     DateRules.EveryDay(),
-                    TimeRules.At(9, 25),
+                    TimeRules.At(9, 40),
                     SelectSymbols
                 )
             );
@@ -69,20 +68,7 @@ namespace QuantConnect.Algorithm.CSharp
 
         private IEnumerable<Symbol> SelectSymbols(DateTime dateTime)
         {
-            var url = LiveMode ? LiveUrl : BacktestUrl;
-            var file = Download(url);
-            if (LiveMode)
-            {
-                // fetch the file from dropbox
-                // if we have a file for today, break apart by commas and return symbols
-                if (file.Length > 0)
-                {
-                    var response = file.ToCsv().Select(x => QuantConnect.Symbol.Create(x, SecurityType.Equity, Market.USA));
-                    return response;
-                }
-                // no symbol today, leave universe unchanged
-                return Universe.Unchanged;
-            }
+            var file = Download(fileUrl);
 
             // backtest - first cache the entire file
             if (_backtestSymbolsPerDay.Count == 0)
