@@ -72,7 +72,9 @@ namespace QuantConnect.Algorithm.CSharp
 
         public override void OnSecuritiesChanged(SecurityChanges changes)
         {
-            Debug($"{Time}: {changes}");
+            Debug($"OnSecuritiesChanged {Time}: {changes}");
+            Debug($" added {string.Join("," , changes.AddedSecurities.Select(x => x.Symbol.Value))}");
+            Debug($" removed {string.Join("," , changes.RemovedSecurities.Select(x => x.Symbol.Value))}");
         }
 
 
