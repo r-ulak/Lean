@@ -14,7 +14,7 @@ namespace QuantConnect.Algorithm.CSharp
     {
         // the changes from the previous universe selection
         private readonly Dictionary<DateTime, List<string>> _backtestSymbolsPerDay = new Dictionary<DateTime, List<string>>();
-        private const string fileUrl = @"https://www.dropbox.com/s/rc7xay8voo7elol/stock-picker-backtest-2020-10-16.csv?dl=1";
+        private const string fileUrl = @"https://www.dropbox.com/s/h2dyzpyjylrimh6/stock-picker-live.csv?dl=1";
         private Dictionary<string, SecurityDetail> _securityDetails;
         private decimal _stopLossPercent = 0.97m;  //2% trailing loss
         private decimal _maxProfit = 1.02m;  //2% Profit
@@ -36,7 +36,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetUniverseSelection(
                 new ScheduledUniverseSelectionModel(
                     DateRules.EveryDay(),
-                    TimeRules.At(9, 25),
+                    TimeRules.At(9, 29),
                     SelectSymbols
                 )
             );
