@@ -5,6 +5,7 @@ using System.Linq;
 using QuantConnect.Algorithm.Framework.Selection;
 using QuantConnect.Brokerages;
 using QuantConnect.Data.Market;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Indicators;
 using QuantConnect.Orders;
 
@@ -15,11 +16,13 @@ namespace QuantConnect.Algorithm.CSharp
         // the changes from the previous universe selection
         private readonly Dictionary<DateTime, List<string>> _backtestSymbolsPerDay = new Dictionary<DateTime, List<string>>();
         private const string fileUrl = @"https://www.dropbox.com/s/h2dyzpyjylrimh6/stock-picker-live.csv?dl=1";
+        //private const string fileUrl = @"https://www.dropbox.com/s/rc7xay8voo7elol/stock-picker-backtest-2020-10-16.csv?dl=1";
         private Dictionary<string, SecurityDetail> _securityDetails;
-        private decimal _stopLossPercent = 0.97m;  //2% trailing loss
+        private decimal _stopLossPercent = 0.97m;  //3% trailing loss
         private decimal _maxProfit = 1.02m;  //2% Profit
         decimal minimumPurchase = 500m;
         private int _momentumPeriod = 5;
+        private bool _tradeDataAvailable = false;
 
         public override void Initialize()
         {
@@ -41,6 +44,7 @@ namespace QuantConnect.Algorithm.CSharp
                 )
             );
 
+
             Schedule.On(
                 DateRules.EveryDay(),
                 // 15 minutes before market close,
@@ -49,51 +53,69 @@ namespace QuantConnect.Algorithm.CSharp
                 {
                     // before market close we Liquidate ALL
                     Liquidate();
-                  
+
                 }
             );
             Schedule.On(
                 DateRules.EveryDay(),
-                
+
                 TimeRules.At(18, 45),
                 () =>
                 {
-                
+
                     _securityDetails = new Dictionary<string, SecurityDetail>();
+                    _backtestSymbolsPerDay.Clear();
+                    UniverseManager.Clear();
                 }
             );
         }
 
+        public override void OnSecuritiesChanged(SecurityChanges changes)
+        {
+            Debug($"{Time}: {changes}");
+        }
 
 
         private IEnumerable<Symbol> SelectSymbols(DateTime dateTime)
         {
             var file = Download(fileUrl);
 
-            // backtest - first cache the entire file
-            if (_backtestSymbolsPerDay.Count == 0)
+            foreach (var line in file.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                // split the file into lines and add to our cache
-                foreach (var line in file.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
+                var csv = line.ToCsv();
+                var date = DateTime.ParseExact(csv[0], "yyyyMMdd", null);
+                var symbols = csv.Skip(1).ToList();
+                if (_backtestSymbolsPerDay.ContainsKey(date))
                 {
-                    var csv = line.ToCsv();
-                    var date = DateTime.ParseExact(csv[0], "yyyyMMdd", null);
-                    var symbols = csv.Skip(1).ToList();
+                    _backtestSymbolsPerDay[date].AddRange(symbols);
+                }
+                else
+                {
                     _backtestSymbolsPerDay[date] = symbols;
                 }
+
             }
-            // if we have symbols for this date return them, else specify Universe.Unchanged
+
             List<string> result;
             if (_backtestSymbolsPerDay.TryGetValue(dateTime.Date, out result))
             {
-                var response = result.Select(x => QuantConnect.Symbol.Create(x, SecurityType.Equity, Market.USA));
+                var response = result.Distinct().
+                    Select(x => QuantConnect.Symbol.Create(x, SecurityType.Equity, Market.USA));
+                Debug($"*****{dateTime} {string.Join(",", response)}");
+                if (response.Any())
+                {
+                    _tradeDataAvailable = true;
+                }
                 return response;
             }
-            return Universe.Unchanged;
+            Debug($"*****{dateTime}");
+            _tradeDataAvailable = false;
+            return new List<Symbol>() { };
         }
 
         public void OnData(TradeBars data)
         {
+            if (!_tradeDataAvailable) return;
             foreach (TradeBar bar in data.Values)
             {
                 SecurityDetail securityDetail;
@@ -118,8 +140,8 @@ namespace QuantConnect.Algorithm.CSharp
                 {
                     if (_securityDetails[bar.Symbol.Value].HoldingQuantity == 0 && _securityDetails[bar.Symbol.Value].PreviousTradeBar != null)  //there was no holding today
                     {
-                        if (bar.High > _securityDetails[bar.Symbol.Value].PreviousTradeBar.High 
-                            && bar.Close> _securityDetails[bar.Symbol.Value].PreviousTradeBar.Close)
+                        if (bar.High > _securityDetails[bar.Symbol.Value].PreviousTradeBar.High
+                            && bar.Close > _securityDetails[bar.Symbol.Value].PreviousTradeBar.Close)
                         {
                             // reached the highest for the day
                             //10% in cash
@@ -169,7 +191,7 @@ namespace QuantConnect.Algorithm.CSharp
                         -Portfolio[orderEvent.Symbol].Quantity,
                         _securityDetails[orderEvent.Symbol.Value].FillPrice * _maxProfit);
 
-                    
+
 
                     _securityDetails[orderEvent.Symbol.Value].StopTrailingLossOrderTicket
                         = StopMarketOrder(orderEvent.Symbol,
