@@ -18,10 +18,13 @@ namespace QuantConnect.Algorithm.CSharp
         //private const string fileUrl = @"https://www.dropbox.com/s/h2dyzpyjylrimh6/stock-picker-live.csv?dl=1";
         private const string fileUrl = @"https://www.dropbox.com/s/rc7xay8voo7elol/stock-picker-backtest-2020-10-16.csv?dl=1";
         private Dictionary<string, SecurityDetail> _securityDetails;
-        private decimal _stopLossPercent = 0.98m;  //3% trailing loss
-        private decimal _maxProfit = 1.011m;  //2% Profit
+        private decimal _stopLossPercent = 0.98m;  //2% trailing loss
+        private decimal _maxProfit = 1.011m;  //1.10% Profit
         decimal minimumPurchase = 500m;
-        private int _momentumPeriod = 30;
+        private int _momentumPeriod = 90;
+        private int _priceIncreaseFrequency = 2;
+        private int _startHour = 9;
+        private int _startMin = 45;
         private bool _tradeDataAvailable = false;
 
         public override void Initialize()
@@ -39,7 +42,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetUniverseSelection(
                 new ScheduledUniverseSelectionModel(
                     DateRules.EveryDay(),
-                    TimeRules.At(9, 29),
+                    TimeRules.At(_startHour, _startMin - 1),
                     SelectSymbols
                 )
             );
@@ -126,35 +129,49 @@ namespace QuantConnect.Algorithm.CSharp
         public void OnData(TradeBars data)
         {
             if (!_tradeDataAvailable) return;
+
             foreach (TradeBar bar in data.Values)
             {
-                if (!Portfolio[bar.Symbol].HoldStock && Portfolio.Cash < minimumPurchase)
+                if (!(bar.Time.Hour > _startHour && bar.Time.Minute >= _startMin)) return;
+
+                if (!Portfolio[bar.Symbol].HoldStock && Portfolio.Cash > minimumPurchase && _securityDetails.ContainsKey(bar.Symbol.Value))
                 {
+                    var tradeBars = _securityDetails[bar.Symbol.Value].TradeBars;
                     if (_securityDetails[bar.Symbol.Value].HoldingQuantity == 0)  //there was no holding today
                     {
-                        if (_securityDetails[bar.Symbol.Value].TradeBars.Count == 0)
+                        if (tradeBars.Count == 0)
                         {
-                            _securityDetails[bar.Symbol.Value].TradeBars.Add(bar);
+                            tradeBars.Add(bar);
                             break;
                         }
 
-                        if (_securityDetails[bar.Symbol.Value].TradeBars.Last().High < bar.High)
+                        if (tradeBars.Last().High <= bar.High)
                         {
-                            _securityDetails[bar.Symbol.Value].TradeBars.Add(bar);
+                            tradeBars.Add(bar);
                         }
                         else
                         {
-                            _securityDetails[bar.Symbol.Value].TradeBars.Clear();
+                            tradeBars.Clear();
                             break;
                         }
-                        if (_securityDetails[bar.Symbol.Value].TradeBars.Count > _momentumPeriod)
+                        if (tradeBars.Count > _momentumPeriod)
                         {
-                            //10% in cash
-                            SetHoldings(bar.Symbol, 0.9 / Securities.Count);
-                            _securityDetails[bar.Symbol.Value].HighestPrice = bar.High;
-                            Debug($"{_securityDetails[bar.Symbol.Value].TradeBars.Count} price high time {bar.Time} ticker {bar.Symbol.Value} {string.Join(",", _securityDetails[bar.Symbol.Value].TradeBars.Select(x => x.High))}");
-                            Debug($"time {bar.Time} ticker {bar.Symbol.Value} high {bar.High} close {bar.Close} open {bar.Open} mom {_securityDetails[bar.Symbol.Value].Momentum}");
+                            if (tradeBars.Select(x => x.High).Distinct().Count() > _priceIncreaseFrequency)
+                            {
+                                SetHoldings(bar.Symbol, 0.9 / Securities.Count);
+                                _securityDetails[bar.Symbol.Value].HighestPrice = bar.High;
+                                Debug($"{tradeBars.Count} price high time {bar.Time} ticker {bar.Symbol.Value} {string.Join(",", tradeBars.Select(x => x.High))}");
+                                Debug($"time {bar.Time} ticker {bar.Symbol.Value} high {bar.High} close {bar.Close} open {bar.Open}");
+
+                            }
+                            else
+                            {
+
+                                tradeBars.Clear();
+                                break;
+                            }
                         }
+
                     }
 
                 }
@@ -221,12 +238,12 @@ namespace QuantConnect.Algorithm.CSharp
                     _securityDetails[orderEvent.Symbol.Value].StopTrailingLossOrderTicket
                         = StopMarketOrder(orderEvent.Symbol,
                             -Portfolio[orderEvent.Symbol].Quantity,
-                            _securityDetails[orderEvent.Symbol.Value].HighestPrice * _stopLossPercent);
+                            _securityDetails[orderEvent.Symbol.Value].FillPrice * _stopLossPercent);
 
                     Debug($"{orderEvent.Symbol} filled@ { orderEvent.FillPrice} " +
                           $"qty  {orderEvent.Quantity} " +
                           $"sell@ {_securityDetails[orderEvent.Symbol.Value].FillPrice * _maxProfit} " +
-                          $"stopLoss@ {_securityDetails[orderEvent.Symbol.Value].HighestPrice * _stopLossPercent}");
+                          $"stopLoss@ {_securityDetails[orderEvent.Symbol.Value].FillPrice * _stopLossPercent}");
                 }
             }
             else if (orderEvent.Status == OrderStatus.Filled && orderEvent.Direction == OrderDirection.Sell
