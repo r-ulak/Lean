@@ -15,18 +15,18 @@ namespace QuantConnect.Algorithm.CSharp
     {
         // the changes from the previous universe selection
         private readonly Dictionary<DateTime, List<string>> _backtestSymbolsPerDay = new Dictionary<DateTime, List<string>>();
-        private const string fileUrl = @"https://www.dropbox.com/s/h2dyzpyjylrimh6/stock-picker-live.csv?dl=1";
-        //private const string fileUrl = @"https://www.dropbox.com/s/rc7xay8voo7elol/stock-picker-backtest-2020-10-16.csv?dl=1";
+        //private const string fileUrl = @"https://www.dropbox.com/s/h2dyzpyjylrimh6/stock-picker-live.csv?dl=1";
+        private const string fileUrl = @"https://www.dropbox.com/s/rc7xay8voo7elol/stock-picker-backtest-2020-10-16.csv?dl=1";
         private Dictionary<string, SecurityDetail> _securityDetails;
-        private decimal _stopLossPercent = 0.97m;  //3% trailing loss
-        private decimal _maxProfit = 1.02m;  //2% Profit
+        private decimal _stopLossPercent = 0.98m;  //3% trailing loss
+        private decimal _maxProfit = 1.011m;  //2% Profit
         decimal minimumPurchase = 500m;
-        private int _momentumPeriod = 5;
+        private int _momentumPeriod = 30;
         private bool _tradeDataAvailable = false;
 
         public override void Initialize()
         {
-            UniverseSettings.Resolution = Resolution.Minute;
+            UniverseSettings.Resolution = Resolution.Second;
             SetBrokerageModel(BrokerageName.InteractiveBrokersBrokerage, AccountType.Margin);
 
             SetStartDate(2020, 10, 12);
@@ -73,15 +73,16 @@ namespace QuantConnect.Algorithm.CSharp
         public override void OnSecuritiesChanged(SecurityChanges changes)
         {
             Debug($"OnSecuritiesChanged {Time}: {changes}");
-            Debug($" added {string.Join("," , changes.AddedSecurities.Select(x => x.Symbol.Value))}");
-            Debug($" removed {string.Join("," , changes.RemovedSecurities.Select(x => x.Symbol.Value))}");
+            Debug($" added {string.Join(",", changes.AddedSecurities.Select(x => x.Symbol.Value))}");
+            Debug($" removed {string.Join(",", changes.RemovedSecurities.Select(x => x.Symbol.Value))}");
         }
 
 
         private IEnumerable<Symbol> SelectSymbols(DateTime dateTime)
         {
             var file = Download(fileUrl);
-
+            _backtestSymbolsPerDay.Clear();
+            UniverseManager.Clear();
             foreach (var line in file.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 var csv = line.ToCsv();
@@ -103,14 +104,21 @@ namespace QuantConnect.Algorithm.CSharp
             {
                 var response = result.Distinct().
                     Select(x => QuantConnect.Symbol.Create(x, SecurityType.Equity, Market.USA));
-                Debug($"*****{dateTime} {string.Join(",", response)}");
-                if (response.Any())
+                Debug($"*******{dateTime} {string.Join(",", response)}");
+                foreach (var key in response)
                 {
+                    SecurityDetail securityDetail;
+                    if (!_securityDetails.TryGetValue(key.Value, out securityDetail))
+                    {
+                        _securityDetails[key.Value] = new SecurityDetail()
+                        {
+                            TradeBars = new List<TradeBar>()
+                        };
+                    }
                     _tradeDataAvailable = true;
                 }
                 return response;
             }
-            Debug($"*****{dateTime}");
             _tradeDataAvailable = false;
             return new List<Symbol>() { };
         }
@@ -120,44 +128,48 @@ namespace QuantConnect.Algorithm.CSharp
             if (!_tradeDataAvailable) return;
             foreach (TradeBar bar in data.Values)
             {
-                SecurityDetail securityDetail;
-                if (!_securityDetails.TryGetValue(bar.Symbol.Value, out securityDetail))
+                if (!Portfolio[bar.Symbol].HoldStock && Portfolio.Cash < minimumPurchase)
                 {
-                    _securityDetails[bar.Symbol.Value] = new SecurityDetail()
+                    if (_securityDetails[bar.Symbol.Value].HoldingQuantity == 0)  //there was no holding today
                     {
-                        Momentum = MOMP(bar.Symbol, _momentumPeriod, Resolution.Minute)
-                    };
-                }
-                _securityDetails[bar.Symbol.Value].TradeBar = bar;
-                if (Portfolio.Cash < minimumPurchase)
-                {
-                    break;
-                }
-                if (bar.High > _securityDetails[bar.Symbol.Value].HighestPrice)
-                {
-                    _securityDetails[bar.Symbol.Value].HighestPrice = bar.High;
-                    UpdateStopTrailingLoss(_securityDetails[bar.Symbol.Value]);
-                }
-                if (!Portfolio[bar.Symbol].HoldStock)
-                {
-                    if (_securityDetails[bar.Symbol.Value].HoldingQuantity == 0 && _securityDetails[bar.Symbol.Value].PreviousTradeBar != null)  //there was no holding today
-                    {
-                        if (bar.High > _securityDetails[bar.Symbol.Value].PreviousTradeBar.High
-                            && bar.Close > _securityDetails[bar.Symbol.Value].PreviousTradeBar.Close)
+                        if (_securityDetails[bar.Symbol.Value].TradeBars.Count == 0)
                         {
-                            // reached the highest for the day
+                            _securityDetails[bar.Symbol.Value].TradeBars.Add(bar);
+                            break;
+                        }
+
+                        if (_securityDetails[bar.Symbol.Value].TradeBars.Last().High < bar.High)
+                        {
+                            _securityDetails[bar.Symbol.Value].TradeBars.Add(bar);
+                        }
+                        else
+                        {
+                            _securityDetails[bar.Symbol.Value].TradeBars.Clear();
+                            break;
+                        }
+                        if (_securityDetails[bar.Symbol.Value].TradeBars.Count > _momentumPeriod)
+                        {
                             //10% in cash
                             SetHoldings(bar.Symbol, 0.9 / Securities.Count);
+                            _securityDetails[bar.Symbol.Value].HighestPrice = bar.High;
+                            Debug($"{_securityDetails[bar.Symbol.Value].TradeBars.Count} price high time {bar.Time} ticker {bar.Symbol.Value} {string.Join(",", _securityDetails[bar.Symbol.Value].TradeBars.Select(x => x.High))}");
                             Debug($"time {bar.Time} ticker {bar.Symbol.Value} high {bar.High} close {bar.Close} open {bar.Open} mom {_securityDetails[bar.Symbol.Value].Momentum}");
-
                         }
+                    }
+
+                }
+                else
+                {
+                    if (bar.High > _securityDetails[bar.Symbol.Value].HighestPrice)
+                    {
+                        _securityDetails[bar.Symbol.Value].HighestPrice = bar.High;
+                        UpdateStopTrailingLoss(_securityDetails[bar.Symbol.Value]);
                     }
                 }
 
-
-                _securityDetails[bar.Symbol.Value].PreviousTradeBar = bar;
             }
         }
+
 
         private void UpdateStopTrailingLoss(SecurityDetail securityDetail)
         {
@@ -168,6 +180,13 @@ namespace QuantConnect.Algorithm.CSharp
                 {
                     StopPrice = _stopLossPercent * securityDetail.HighestPrice
                 });
+                if (_stopLossPercent * securityDetail.HighestPrice >= securityDetail.FillPrice * _maxProfit)
+                {
+                    if (securityDetail.StoLimit != null && securityDetail.StoLimit.OrderId > 0)
+                    {
+                        securityDetail.StoLimit.Cancel();
+                    }
+                }
                 Plot("Data Chart", "Stop Price", orderTicket.Get(OrderField.StopPrice));
             }
         }
@@ -187,12 +206,16 @@ namespace QuantConnect.Algorithm.CSharp
                 {
                     _securityDetails[orderEvent.Symbol.Value].FillPrice = orderEvent.FillPrice;
                     _securityDetails[orderEvent.Symbol.Value].HoldingQuantity = orderEvent.Quantity;
+                    //Only Take Profit if Stop trailing loss is Lower than profit
+                    if (_securityDetails[orderEvent.Symbol.Value].HighestPrice * _stopLossPercent
+                        < _securityDetails[orderEvent.Symbol.Value].FillPrice * _maxProfit)
+                    {
 
-                    _securityDetails[orderEvent.Symbol.Value].StoLimit = LimitOrder(
-                        orderEvent.Symbol,
-                        -Portfolio[orderEvent.Symbol].Quantity,
-                        _securityDetails[orderEvent.Symbol.Value].FillPrice * _maxProfit);
-
+                        _securityDetails[orderEvent.Symbol.Value].StoLimit = LimitOrder(
+                            orderEvent.Symbol,
+                            -Portfolio[orderEvent.Symbol].Quantity,
+                            _securityDetails[orderEvent.Symbol.Value].FillPrice * _maxProfit);
+                    }
 
 
                     _securityDetails[orderEvent.Symbol.Value].StopTrailingLossOrderTicket
@@ -224,8 +247,7 @@ namespace QuantConnect.Algorithm.CSharp
         public decimal HighestPrice { get; set; }
         public decimal FillPrice { get; set; }
         public MomentumPercent Momentum { get; set; }
-        public TradeBar PreviousTradeBar { get; set; }
-        public TradeBar TradeBar { get; set; }
+        public List<TradeBar> TradeBars { get; set; }
         public decimal HoldingQuantity { get; set; }
         public OrderTicket StopTrailingLossOrderTicket { get; set; }
         public OrderTicket StoLimit { get; set; }
