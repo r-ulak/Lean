@@ -21,8 +21,8 @@ namespace QuantConnect.Algorithm.CSharp
         private decimal _stopLossPercent = 0.98m;  //2% trailing loss
         private decimal _maxProfit = 1.011m;  //1.10% Profit
         decimal minimumPurchase = 500m;
-        private int _momentumPeriod = 90;
-        private int _priceIncreaseFrequency = 2;
+        private int _momentumPeriod = 60;
+        private int _priceIncreaseFrequency = 3;
         private int _startHour = 9;
         private int _startMin = 45;
         private bool _tradeDataAvailable = false;
