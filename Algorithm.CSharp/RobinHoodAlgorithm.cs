@@ -15,7 +15,8 @@ namespace QuantConnect.Algorithm.CSharp
     {
         // the changes from the previous universe selection
         private readonly Dictionary<DateTime, List<string>> _backtestSymbolsPerDay = new Dictionary<DateTime, List<string>>();
-        //private const string fileUrl = @"https://www.dropbox.com/s/h2dyzpyjylrimh6/stock-picker-live.csv?dl=1";
+        //private const string fileUrl = @"https://www.dropbox.com/s/hu3gwvg8la16cha/stock-picker-live-30.csv?dl=1";
+        //private const string fileUrl = @"https://www.dropbox.com/s/msucmgevw0dp0ep/stock-picker-live-45.csv?dl=1";
         private const string fileUrl = @"https://www.dropbox.com/s/rc7xay8voo7elol/stock-picker-backtest-2020-10-16.csv?dl=1";
         private Dictionary<string, SecurityDetail> _securityDetails;
         private decimal _stopLossPercent = 0.98m;  //2% trailing loss
@@ -24,7 +25,7 @@ namespace QuantConnect.Algorithm.CSharp
         private int _momentumPeriod = 60;
         private int _priceIncreaseFrequency = 3;
         private int _startHour = 9;
-        private int _startMin = 45;
+        private int _startMin = 30;
         private bool _tradeDataAvailable = false;
 
         public override void Initialize()
