@@ -27,6 +27,7 @@ namespace QuantConnect.Algorithm.CSharp
         private int _startHour = 9;
         private int _startMin = 30;
         private bool _tradeDataAvailable = false;
+        private decimal _percentBelowDailyHigh = 0.02m;
 
         public override void Initialize()
         {
@@ -134,6 +135,7 @@ namespace QuantConnect.Algorithm.CSharp
             foreach (TradeBar bar in data.Values)
             {
                 if (!(bar.Time.Hour > _startHour && bar.Time.Minute >= _startMin)) return;
+                var dailyHigh = Identity(bar.Symbol, Resolution.Daily, Field.High);
 
                 if (!Portfolio[bar.Symbol].HoldStock && Portfolio.Cash > minimumPurchase && _securityDetails.ContainsKey(bar.Symbol.Value))
                 {
@@ -155,11 +157,14 @@ namespace QuantConnect.Algorithm.CSharp
                             tradeBars.Clear();
                             break;
                         }
+
                         if (tradeBars.Count > _momentumPeriod)
                         {
-                            if (tradeBars.Select(x => x.High).Distinct().Count() > _priceIncreaseFrequency)
+                            if (tradeBars.Select(x => x.High).Distinct().Count() > _priceIncreaseFrequency
+                                && (dailyHigh - bar.Close) / dailyHigh <= _percentBelowDailyHigh)
                             {
-                                SetHoldings(bar.Symbol, 0.9 / Securities.Count);
+
+                                SetHoldings(bar.Symbol, 0.95 / (Securities.Count / 4));
                                 _securityDetails[bar.Symbol.Value].HighestPrice = bar.High;
                                 Debug($"{tradeBars.Count} price high time {bar.Time} ticker {bar.Symbol.Value} {string.Join(",", tradeBars.Select(x => x.High))}");
                                 Debug($"time {bar.Time} ticker {bar.Symbol.Value} high {bar.High} close {bar.Close} open {bar.Open}");
