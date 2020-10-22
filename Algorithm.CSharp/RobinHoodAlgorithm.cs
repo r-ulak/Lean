@@ -136,7 +136,7 @@ namespace QuantConnect.Algorithm.CSharp
             {
                 if (!(bar.Time.Hour > _startHour && bar.Time.Minute >= _startMin)) return;
                 var dailyHigh = Identity(bar.Symbol, Resolution.Daily, Field.High);
-
+                if (dailyHigh==0) return;
                 if (!Portfolio[bar.Symbol].HoldStock && Portfolio.Cash > minimumPurchase && _securityDetails.ContainsKey(bar.Symbol.Value))
                 {
                     var tradeBars = _securityDetails[bar.Symbol.Value].TradeBars;
