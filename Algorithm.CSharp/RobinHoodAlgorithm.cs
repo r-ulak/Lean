@@ -45,7 +45,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetUniverseSelection(
                 new ScheduledUniverseSelectionModel(
                     DateRules.EveryDay(),
-                    TimeRules.At(_startHour, _startMin - 1),
+                    TimeRules.Every(TimeSpan.FromMinutes(2)),
                     SelectSymbols
                 )
             );
