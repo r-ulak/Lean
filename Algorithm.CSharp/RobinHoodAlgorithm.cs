@@ -24,6 +24,7 @@ namespace QuantConnect.Algorithm.CSharp
         decimal minimumPurchase = 500m;
         private int _momentumPeriod = 60;
         private int _priceIncreaseFrequency = 3;
+        private int _priceIncreaseFrequencyOverrideMomentumPeriod = 12;
         private int _startHour = 9;
         private int _startMin = 30;
         private bool _tradeDataAvailable = false;
@@ -134,9 +135,13 @@ namespace QuantConnect.Algorithm.CSharp
 
             foreach (TradeBar bar in data.Values)
             {
-                if (!(bar.Time.Hour > _startHour && bar.Time.Minute >= _startMin)) return;
-                var dailyHigh = Identity(bar.Symbol, Resolution.Daily, Field.High);
-                if (dailyHigh==0) return;
+                if (!(bar.Time.Hour >= _startHour && bar.Time.Minute >= _startMin)) break;
+                if (bar.High > _securityDetails[bar.Symbol.Value].HighestPriceForToday)
+                {
+                    _securityDetails[bar.Symbol.Value].HighestPriceForToday = bar.High;
+                }
+                var dailyHigh = _securityDetails[bar.Symbol.Value].HighestPriceForToday;
+                if (dailyHigh == 0) break;
                 if (!Portfolio[bar.Symbol].HoldStock && Portfolio.Cash > minimumPurchase && _securityDetails.ContainsKey(bar.Symbol.Value))
                 {
                     var tradeBars = _securityDetails[bar.Symbol.Value].TradeBars;
@@ -158,17 +163,23 @@ namespace QuantConnect.Algorithm.CSharp
                             break;
                         }
 
-                        if (tradeBars.Count > _momentumPeriod)
+                        if (tradeBars.Count > _momentumPeriod || tradeBars.Select(x => x.High).Distinct().Count() > _priceIncreaseFrequencyOverrideMomentumPeriod)
                         {
-                            if (tradeBars.Select(x => x.High).Distinct().Count() > _priceIncreaseFrequency
-                                && (dailyHigh - bar.Close) / dailyHigh <= _percentBelowDailyHigh)
+                            if (tradeBars.Select(x => x.High).Distinct().Count() > _priceIncreaseFrequency)
                             {
+                                if ((dailyHigh - bar.Close) / dailyHigh <= _percentBelowDailyHigh)
+                                {
 
-                                SetHoldings(bar.Symbol, 0.95 / (Securities.Count / 4));
-                                _securityDetails[bar.Symbol.Value].HighestPrice = bar.High;
-                                Debug($"{tradeBars.Count} price high time {bar.Time} ticker {bar.Symbol.Value} {string.Join(",", tradeBars.Select(x => x.High))}");
-                                Debug($"time {bar.Time} ticker {bar.Symbol.Value} high {bar.High} close {bar.Close} open {bar.Open}");
+                                    SetHoldings(bar.Symbol, 0.8);
+                                    _securityDetails[bar.Symbol.Value].HighestPrice = bar.High;
+                                    Debug(
+                                        $"{tradeBars.Count} price high time {bar.Time} ticker {bar.Symbol.Value} {string.Join(",", tradeBars.Select(x => x.High))}"
+                                    );
+                                    Debug(
+                                        $"time {bar.Time} ticker {bar.Symbol.Value} high {bar.High} close {bar.Close} open {bar.Open}"
+                                    );
 
+                                }
                             }
                             else
                             {
@@ -189,6 +200,7 @@ namespace QuantConnect.Algorithm.CSharp
                         UpdateStopTrailingLoss(_securityDetails[bar.Symbol.Value]);
                     }
                 }
+
 
             }
         }
@@ -267,6 +279,7 @@ namespace QuantConnect.Algorithm.CSharp
     }
     public class SecurityDetail
     {
+        public decimal HighestPriceForToday { get; set; }
         public decimal HighestPrice { get; set; }
         public decimal FillPrice { get; set; }
         public MomentumPercent Momentum { get; set; }
