@@ -146,6 +146,7 @@
     <Compile Include="ReverseEtfMomentumNoStopTrailingLoss.cs" />
     <Compile Include="RobinHoodAlgorithm.cs" />
     <Compile Include="ReverseEtfMomentumWithStopTrailingLoss.cs" />
+    <Compile Include="TopGainersWIthIndicatorsAlgorithm.cs" />
     <Compile Include="UniverseWithStopTrailingLossTemplate.cs" />
     <Compile Include="HighVolumeSelection.cs" />
     <Compile Include="AssetClassMomentumAlgorithm.cs" />
