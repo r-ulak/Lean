@@ -49,7 +49,7 @@ namespace QuantConnect.Algorithm.CSharp
                 )
             );
 
-
+            SetWarmUp(_momentumPeriod, Resolution.Second);
             Schedule.On(
                 DateRules.EveryDay(),
                 // 15 minutes before market close,
@@ -282,9 +282,21 @@ namespace QuantConnect.Algorithm.CSharp
         public decimal HighestPrice { get; set; }
         public decimal FillPrice { get; set; }
         public MomentumPercent MomentumPercent { get; set; }
+        public RelativeStrengthIndex RelativeStrengthIndex { get; set; }
+        public BollingerBands BollingerBands { get; set; }
+        public MovingAverageConvergenceDivergence MovingAverageConvergenceDivergence { get; set; }
+        public bool WarmupComplete =>
+             this.MomentumPercent.IsReady && this.RelativeStrengthIndex.IsReady && this.BollingerBands.IsReady &&
+                   this.MovingAverageConvergenceDivergence.IsReady;
         public List<TradeBar> TradeBars { get; set; }
         public decimal HoldingQuantity { get; set; }
         public OrderTicket StopTrailingLossOrderTicket { get; set; }
         public OrderTicket StoLimit { get; set; }
+
+        public void UpdateIndicators(DateTime time, decimal price)
+        {
+            this.MomentumPercent.Update(time, price);
+            this.RelativeStrengthIndex.Update(time, price);
+        }
     }
 }
