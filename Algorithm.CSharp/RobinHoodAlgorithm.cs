@@ -197,7 +197,7 @@ namespace QuantConnect.Algorithm.CSharp
                     if (bar.High > _securityDetails[bar.Symbol.Value].HighestPrice)
                     {
                         _securityDetails[bar.Symbol.Value].HighestPrice = bar.High;
-                        UpdateStopTrailingLoss(_securityDetails[bar.Symbol.Value]);
+                        UpdateStopTrailingLoss(_securityDetails[bar.Symbol.Value], bar.Symbol);
                     }
                 }
 
@@ -206,7 +206,7 @@ namespace QuantConnect.Algorithm.CSharp
         }
 
 
-        private void UpdateStopTrailingLoss(SecurityDetail securityDetail)
+        private void UpdateStopTrailingLoss(SecurityDetail securityDetail, Symbol sym)
         {
             var orderTicket = securityDetail.StopTrailingLossOrderTicket;
             if (orderTicket != null)
@@ -224,45 +224,41 @@ namespace QuantConnect.Algorithm.CSharp
                 }
                 Plot("Data Chart", "Stop Price", orderTicket.Get(OrderField.StopPrice));
             }
+
+            else if (_securityDetails[sym.Value].StoLimit?
+                         .OrderId > 0)
+            {
+                _securityDetails[sym.Value].StopTrailingLossOrderTicket
+                    = StopMarketOrder(sym,
+                        -Portfolio[sym].Quantity,
+                        _securityDetails[sym.Value].FillPrice * _stopLossPercent);
+
+            }
         }
 
         public override void OnOrderEvent(OrderEvent orderEvent)
         {
             if (orderEvent.Status == OrderStatus.Filled && orderEvent.Direction == OrderDirection.Buy)
             {
-                SecurityDetail securityDetail;
-                if (_securityDetails.TryGetValue(orderEvent.Symbol.Value, out securityDetail)
-                    & securityDetail?.StopTrailingLossOrderTicket?.OrderId > 0)
-                {
-
-                    UpdateStopTrailingLoss(securityDetail);
-                }
-                else
-                {
+  
                     _securityDetails[orderEvent.Symbol.Value].FillPrice = orderEvent.FillPrice;
                     _securityDetails[orderEvent.Symbol.Value].HoldingQuantity = orderEvent.Quantity;
                     //Only Take Profit if Stop trailing loss is Lower than profit
-                    if (_securityDetails[orderEvent.Symbol.Value].HighestPrice * _stopLossPercent
-                        < _securityDetails[orderEvent.Symbol.Value].FillPrice * _maxProfit)
-                    {
+      
 
                         _securityDetails[orderEvent.Symbol.Value].StoLimit = LimitOrder(
                             orderEvent.Symbol,
                             -Portfolio[orderEvent.Symbol].Quantity,
                             _securityDetails[orderEvent.Symbol.Value].FillPrice * _maxProfit);
-                    }
+                    
 
 
-                    _securityDetails[orderEvent.Symbol.Value].StopTrailingLossOrderTicket
-                        = StopMarketOrder(orderEvent.Symbol,
-                            -Portfolio[orderEvent.Symbol].Quantity,
-                            _securityDetails[orderEvent.Symbol.Value].FillPrice * _stopLossPercent);
 
                     Debug($"{orderEvent.Symbol} filled@ { orderEvent.FillPrice} " +
                           $"qty  {orderEvent.Quantity} " +
                           $"sell@ {_securityDetails[orderEvent.Symbol.Value].FillPrice * _maxProfit} " +
                           $"stopLoss@ {_securityDetails[orderEvent.Symbol.Value].FillPrice * _stopLossPercent}");
-                }
+                
             }
             else if (orderEvent.Status == OrderStatus.Filled && orderEvent.Direction == OrderDirection.Sell
             )
@@ -274,6 +270,7 @@ namespace QuantConnect.Algorithm.CSharp
                     Transactions.CancelOpenOrders(order.Symbol);
                 }
             }
+
         }
 
     }
